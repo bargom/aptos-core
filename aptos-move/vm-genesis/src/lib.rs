@@ -39,6 +39,7 @@ use move_deps::{
 use once_cell::sync::Lazy;
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
+use aptos_types::account_config::aptos_test_root_address;
 
 // The seed is arbitrarily picked to produce a consistent key. XXX make this more formal?
 const GENESIS_SEED: [u8; 32] = [42; 32];
@@ -46,6 +47,7 @@ const GENESIS_SEED: [u8; 32] = [42; 32];
 const GENESIS_MODULE_NAME: &str = "genesis";
 const GOVERNANCE_MODULE_NAME: &str = "aptos_governance";
 const CODE_MODULE_NAME: &str = "code";
+const VERSION_MODULE_NAME: &str = "version";
 
 const NUM_SECONDS_PER_YEAR: u64 = 365 * 24 * 60 * 60;
 const MICRO_SECONDS_PER_SECOND: u64 = 1_000_000;
@@ -121,6 +123,9 @@ pub fn encode_genesis_change_set(
     }
     initialize_on_chain_governance(&mut session, genesis_config);
     create_and_initialize_validators(&mut session, validators);
+    if genesis_config.is_test {
+        allow_core_resources_to_set_version(&mut session);
+    }
 
     // Reconfiguration should happen after all on-chain invocations.
     emit_new_block_and_epoch_event(&mut session);
@@ -337,6 +342,16 @@ fn create_and_initialize_validators(
         "create_initialize_validators",
         vec![],
         serialized_values,
+    );
+}
+
+fn allow_core_resources_to_set_version(session: &mut SessionExt<impl MoveResolver>) {
+    exec_function(
+        session,
+        VERSION_MODULE_NAME,
+        "initialize_for_test",
+        vec![],
+        serialize_values(&vec![MoveValue::Signer(aptos_test_root_address())]),
     );
 }
 
