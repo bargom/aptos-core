@@ -45,7 +45,7 @@ impl ValidatorSetCacheUpdater {
     pub async fn update(&self) {
         for (chain_id, url) in self.query_addresses.iter() {
             let client = RestClient::new(Url::parse(url).unwrap());
-            let validators = client.validator_set_validator_addresses().await;
+            let validators = client.validator_set_all_addresses().await;
             match validators {
                 Ok((validators, state)) => {
                     let received_chain_id = ChainId::new(state.chain_id);
@@ -58,10 +58,17 @@ impl ValidatorSetCacheUpdater {
 
                     let peer_set = validators
                         .iter()
-                        .map(|(peer_id, addrs)| {
+                        .map(|(peer_id, validator_addrs, fullnode_addrs)| {
+                            // If the onchain config has a fullnode address for the validator,
+                            // then it is a Validator Full Node (VFN).
+                            let peer_role = if fullnode_addrs.is_empty() {
+                                PeerRole::Validator
+                            } else {
+                                PeerRole::ValidatorFullNode
+                            };
                             (
                                 *peer_id,
-                                Peer::from_addrs(PeerRole::Validator, addrs.to_vec()),
+                                Peer::from_addrs(peer_role, validator_addrs.to_vec()),
                             )
                         })
                         .collect();
