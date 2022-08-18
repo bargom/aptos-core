@@ -12,6 +12,7 @@ use crate::{
         },
     },
 };
+use aptos_compression::metrics::CompressionClient;
 use aptos_config::{
     config::{NodeConfig, PeerRole},
     network_id::{NetworkId, PeerNetworkId},
@@ -314,8 +315,15 @@ impl TestHarness {
         // Handle outgoing message
         match network_req {
             PeerManagerRequest::SendDirectSend(remote_peer_id, msg) => {
-                let decoded_msg = bcs::from_bytes(&msg.mdata).unwrap();
-                match decoded_msg {
+                // Decompress and deserialize the message
+                let mempool_message = bcs::from_bytes(
+                    &aptos_compression::decompress(&msg.mdata.to_vec(), CompressionClient::Mempool)
+                        .unwrap(),
+                )
+                .unwrap();
+
+                // Process the message
+                match mempool_message {
                     MempoolSyncMsg::BroadcastTransactionsRequest {
                         transactions,
                         request_id: _request_id,
@@ -392,8 +400,15 @@ impl TestHarness {
 
         match network_req {
             PeerManagerRequest::SendDirectSend(remote_peer_id, msg) => {
-                let decoded_msg = bcs::from_bytes(&msg.mdata).unwrap();
-                match decoded_msg {
+                // Decompress and deserialize the message
+                let mempool_message = bcs::from_bytes(
+                    &aptos_compression::decompress(&msg.mdata.to_vec(), CompressionClient::Mempool)
+                        .unwrap(),
+                )
+                .unwrap();
+
+                // Process the message
+                match mempool_message {
                     MempoolSyncMsg::BroadcastTransactionsResponse { .. } => {
                         // send it to peer
                         let lookup_peer_network_id = match network_id {

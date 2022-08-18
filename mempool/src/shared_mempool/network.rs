@@ -126,17 +126,11 @@ impl ApplicationNetworkSender<MempoolSyncMsg> for MempoolNetworkSender {
 
     async fn send_rpc(
         &self,
-        recipient: PeerId,
-        req_msg: MempoolSyncMsg,
-        timeout: Duration,
+        _recipient: PeerId,
+        _req_msg: MempoolSyncMsg,
+        _timeout: Duration,
     ) -> Result<MempoolSyncMsg, RpcError> {
-        fail_point!("mempool::send_to", |_| {
-            Err(anyhow::anyhow!("Injected error in mempool::send_rpc").into())
-        });
-        let protocol = ProtocolId::MempoolRpc;
-        self.inner
-            .send_rpc(recipient, protocol, req_msg, timeout)
-            .await
+        unimplemented!("Shared mempool only supports direct send messages!");
     }
 }
 

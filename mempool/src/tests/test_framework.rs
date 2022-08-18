@@ -8,6 +8,7 @@ use crate::{
     tests::common::TestTransaction,
     MempoolClientRequest, MempoolClientSender, QuorumStoreRequest,
 };
+use aptos_compression::metrics::CompressionClient;
 use aptos_config::{
     config::NodeConfig,
     network_id::{NetworkId, PeerNetworkId},
@@ -343,7 +344,15 @@ impl MempoolNode {
             }
         };
         assert_eq!(peer_id, expected_peer_id);
-        let request_id = match bcs::from_bytes(&data).unwrap() {
+
+        // Decompress and deserialize the message
+        let mempool_message = bcs::from_bytes(
+            &aptos_compression::decompress(&data.to_vec(), CompressionClient::Mempool).unwrap(),
+        )
+        .unwrap();
+
+        // Process the message
+        let request_id = match mempool_message {
             MempoolSyncMsg::BroadcastTransactionsRequest {
                 request_id,
                 transactions,
