@@ -17,6 +17,7 @@
 //! makes the caller's job easier and, more importantly, makes the library safer to use.
 
 use crate::{
+    bls12381,
     bls12381::{
         bls12381_keys::{PrivateKey, PublicKey},
         DST_BLS_SIG_IN_G2_WITH_POP,
