@@ -3,8 +3,8 @@
 #![allow(clippy::extra_unused_lifetimes)]
 
 use crate::{models::transactions::Transaction, schema::signatures};
-use aptos_crypto::HashValue;
 use aptos_protos::block_output::v1::SignatureOutput;
+use aptos_rest_client::aptos_api_types::HexEncodedBytes;
 use serde::Serialize;
 
 #[derive(Associations, Clone, Debug, Identifiable, Insertable, Queryable, Serialize)]
@@ -37,9 +37,7 @@ impl Signature {
             signer: signature.signer.clone(),
             is_sender_primary: signature.is_sender_primary,
             type_: signature.signature_type.clone(),
-            public_key: HashValue::from_slice(signature.public_key.clone())
-                .unwrap()
-                .to_string(),
+            public_key: HexEncodedBytes::from(signature.public_key.clone()).to_string(),
             threshold: signature.threshold as i64,
             public_key_indices: serde_json::to_value(signature.public_key_indices.clone()).unwrap(),
             inserted_at: chrono::Utc::now().naive_utc(),

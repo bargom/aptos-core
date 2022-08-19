@@ -228,18 +228,24 @@ impl serde::Serialize for BlockOutput {
     {
         use serde::ser::SerializeStruct;
         let mut len = 0;
+        if self.height != 0 {
+            len += 1;
+        }
         if !self.transactions.is_empty() {
             len += 1;
         }
-        if self.height != 0 {
+        if self.chain_id != 0 {
             len += 1;
         }
         let mut struct_ser = serializer.serialize_struct("aptos.block_output.v1.BlockOutput", len)?;
+        if self.height != 0 {
+            struct_ser.serialize_field("height", ToString::to_string(&self.height).as_str())?;
+        }
         if !self.transactions.is_empty() {
             struct_ser.serialize_field("transactions", &self.transactions)?;
         }
-        if self.height != 0 {
-            struct_ser.serialize_field("height", ToString::to_string(&self.height).as_str())?;
+        if self.chain_id != 0 {
+            struct_ser.serialize_field("chainId", &self.chain_id)?;
         }
         struct_ser.end()
     }
@@ -251,14 +257,16 @@ impl<'de> serde::Deserialize<'de> for BlockOutput {
         D: serde::Deserializer<'de>,
     {
         const FIELDS: &[&str] = &[
-            "transactions",
             "height",
+            "transactions",
+            "chainId",
         ];
 
         #[allow(clippy::enum_variant_names)]
         enum GeneratedField {
-            Transactions,
             Height,
+            Transactions,
+            ChainId,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
             fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
@@ -280,8 +288,9 @@ impl<'de> serde::Deserialize<'de> for BlockOutput {
                         E: serde::de::Error,
                     {
                         match value {
-                            "transactions" => Ok(GeneratedField::Transactions),
                             "height" => Ok(GeneratedField::Height),
+                            "transactions" => Ok(GeneratedField::Transactions),
+                            "chainId" => Ok(GeneratedField::ChainId),
                             _ => Err(serde::de::Error::unknown_field(value, FIELDS)),
                         }
                     }
@@ -301,16 +310,11 @@ impl<'de> serde::Deserialize<'de> for BlockOutput {
                 where
                     V: serde::de::MapAccess<'de>,
             {
-                let mut transactions__ = None;
                 let mut height__ = None;
+                let mut transactions__ = None;
+                let mut chain_id__ = None;
                 while let Some(k) = map.next_key()? {
                     match k {
-                        GeneratedField::Transactions => {
-                            if transactions__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("transactions"));
-                            }
-                            transactions__ = Some(map.next_value()?);
-                        }
                         GeneratedField::Height => {
                             if height__.is_some() {
                                 return Err(serde::de::Error::duplicate_field("height"));
@@ -319,11 +323,26 @@ impl<'de> serde::Deserialize<'de> for BlockOutput {
                                 map.next_value::<::pbjson::private::NumberDeserialize<_>>()?.0
                             );
                         }
+                        GeneratedField::Transactions => {
+                            if transactions__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("transactions"));
+                            }
+                            transactions__ = Some(map.next_value()?);
+                        }
+                        GeneratedField::ChainId => {
+                            if chain_id__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("chainId"));
+                            }
+                            chain_id__ = Some(
+                                map.next_value::<::pbjson::private::NumberDeserialize<_>>()?.0
+                            );
+                        }
                     }
                 }
                 Ok(BlockOutput {
-                    transactions: transactions__.unwrap_or_default(),
                     height: height__.unwrap_or_default(),
+                    transactions: transactions__.unwrap_or_default(),
+                    chain_id: chain_id__.unwrap_or_default(),
                 })
             }
         }

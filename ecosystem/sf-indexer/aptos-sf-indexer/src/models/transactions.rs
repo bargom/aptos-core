@@ -30,7 +30,7 @@ pub struct Transaction {
     pub hash: String,
     #[diesel(column_name = type)]
     pub type_: String,
-    pub payload: serde_json::Value,
+    pub payload: Option<serde_json::Value>,
     pub state_root_hash: String,
     pub event_root_hash: String,
     pub gas_used: bigdecimal::BigDecimal,
@@ -57,7 +57,7 @@ impl Transaction {
             &transaction.write_set_changes,
             transaction_info.block_height,
         );
-        let mut payload = serde_json::Value::Null;
+        let mut payload: Option<serde_json::Value> = None;
         let mut txn_details = None;
         if let Some(txn_data) = &transaction.txn_data {
             // TODO: add payload handling for genesis which requires adding genesis to option and user transaction
@@ -74,16 +74,20 @@ impl Transaction {
                     let (user_txn, signatures) =
                         UserTransaction::from_transaction(user, transaction_info.block_height);
                     txn_details = Some(TransactionDetail::User(user_txn, signatures));
-                    payload = serde_json::from_str(&user.payload).unwrap_or_default();
+                    payload = Some(serde_json::from_str(&user.payload).unwrap_or_default());
                 }
                 TxnData::Genesis(genesis) => {
-                    payload = serde_json::from_str(&genesis.payload).unwrap_or_default();
+                    payload = Some(serde_json::from_str(&genesis.payload).unwrap_or_default());
                 }
             }
         }
         let txn = Self::from_transaction_info(
             transaction_info,
-            serde_json::to_value(&payload).unwrap(),
+            if payload.is_none() {
+                None
+            } else {
+                Some(serde_json::to_value(&payload).unwrap())
+            },
             transaction_info.r#type.clone(),
         );
         (txn, txn_details, events, write_set_changes, wsc_details)
@@ -91,7 +95,7 @@ impl Transaction {
 
     fn from_transaction_info(
         info: &TransactionInfoOutput,
-        payload: serde_json::Value,
+        payload: Option<serde_json::Value>,
         type_: String,
     ) -> Self {
         Self {

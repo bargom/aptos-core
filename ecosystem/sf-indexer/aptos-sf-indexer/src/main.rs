@@ -7,7 +7,7 @@
 //!
 #![forbid(unsafe_code)]
 
-use aptos_logger::{error, info};
+use aptos_logger::info;
 use aptos_sf_indexer::indexer::substream_processor::{
     get_start_block, run_migrations, SubstreamProcessor,
 };
@@ -68,7 +68,10 @@ async fn main() -> Result<(), Error> {
     if !token_env.is_empty() {
         token = Some(token_env);
     }
-    let package = read_package(package_file)?;
+    let content =
+        std::fs::read(package_file).context(format_err!("read package {}", package_file))?;
+    let package = proto::Package::decode(content.as_ref()).context("decode command")?;
+
     let endpoint = Arc::new(SubstreamsEndpoint::new(&endpoint_url, token).await?);
 
     info!("Created substream endpoint");
@@ -116,11 +119,10 @@ async fn main() -> Result<(), Error> {
                                 block_height += 1
                             }
                             Err(error) => {
-                                error!(
+                                panic!(
                                     "Error processing block {}, error: {:?}",
                                     block_height, &error
                                 );
-                                panic!();
                             }
                         };
                     }
@@ -130,9 +132,4 @@ async fn main() -> Result<(), Error> {
     }
 
     Ok(())
-}
-
-fn read_package(file: &str) -> Result<proto::Package, anyhow::Error> {
-    let content = std::fs::read(file).context(format_err!("read package {}", file))?;
-    proto::Package::decode(content.as_ref()).context("decode command")
 }

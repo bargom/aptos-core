@@ -11,8 +11,9 @@ import "aptos/util/timestamp/timestamp.proto";
 
 
 message BlockOutput {
-  repeated TransactionOutput transactions = 1;
-  uint64 height = 2;
+  uint64 height = 1;
+  repeated TransactionOutput transactions = 2;
+  uint32 chain_id = 3;
 }
 
 message TransactionOutput {

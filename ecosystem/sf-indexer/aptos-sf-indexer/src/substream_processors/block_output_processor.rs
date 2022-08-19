@@ -28,11 +28,15 @@ use std::fmt::Debug;
 
 pub struct BlockOutputSubstreamProcessor {
     connection_pool: PgDbPool,
+    is_chain_id_verified: bool,
 }
 
 impl BlockOutputSubstreamProcessor {
     pub fn new(connection_pool: PgDbPool) -> Self {
-        Self { connection_pool }
+        Self {
+            connection_pool,
+            is_chain_id_verified: false,
+        }
     }
 }
 
@@ -142,13 +146,13 @@ fn insert_user_transactions_w_sigs(conn: &PgPoolConnection, txn_details: &[Trans
                 sig_schema::transaction_version,
                 sig_schema::multi_agent_index,
                 sig_schema::multi_sig_index,
+                sig_schema::is_sender_primary,
             ))
             .do_update()
             .set((
                 sig_schema::transaction_block_height
                     .eq(excluded(sig_schema::transaction_block_height)),
                 sig_schema::signer.eq(excluded(sig_schema::signer)),
-                sig_schema::is_sender_primary.eq(excluded(sig_schema::is_sender_primary)),
                 sig_schema::type_.eq(excluded(sig_schema::type_)),
                 sig_schema::public_key.eq(excluded(sig_schema::public_key)),
                 sig_schema::threshold.eq(excluded(sig_schema::threshold)),
@@ -222,13 +226,13 @@ fn insert_write_set_changes(conn: &PgPoolConnection, wscs: &Vec<WriteSetChangeMo
         conn,
         diesel::insert_into(schema::write_set_changes::table)
             .values(wscs)
-            .on_conflict((transaction_version, hash))
+            .on_conflict((transaction_version, index))
             .do_update()
             .set((
                 transaction_block_height.eq(excluded(transaction_block_height)),
                 type_.eq(excluded(type_)),
                 address.eq(excluded(address)),
-                index.eq(excluded(index)),
+                hash.eq(excluded(hash)),
                 inserted_at.eq(excluded(inserted_at)),
             )),
     )
@@ -337,12 +341,7 @@ fn insert_table_data(conn: &PgPoolConnection, wsc_details: &[WriteSetChangeDetai
         diesel::insert_into(schema::table_metadatas::table)
             .values(metadata)
             .on_conflict(tm::handle)
-            .do_update()
-            .set((
-                tm::key_type.eq(excluded(tm::key_type)),
-                tm::value_type.eq(excluded(tm::value_type)),
-                tm::inserted_at.eq(excluded(tm::inserted_at)),
-            )),
+            .do_nothing(),
     )
     .expect("Error inserting table metadata into database");
 }
@@ -353,8 +352,18 @@ impl SubstreamProcessor for BlockOutputSubstreamProcessor {
         "block_to_block_output"
     }
 
+    fn is_chain_id_verified(&self) -> bool {
+        println!("AAA IS VERIFIED {}", self.is_chain_id_verified);
+        self.is_chain_id_verified
+    }
+
+    fn set_is_chain_id_verified(&mut self) {
+        println!("AAA SETTING CHAIN ID TO TRUE");
+        self.is_chain_id_verified = true;
+    }
+
     async fn process_substream(
-        &self,
+        &mut self,
         stream_data: BlockScopedData,
         block_height: u64,
     ) -> Result<ProcessingResult, BlockProcessingError> {
@@ -386,7 +395,17 @@ impl SubstreamProcessor for BlockOutputSubstreamProcessor {
             }
         };
 
-        let block_height = block_output.height;
+        if block_height != block_output.height {
+            panic!(
+                "We should be on block {}, but received block {}",
+                block_height, block_output.height
+            );
+        }
+        if !self.is_chain_id_verified() {
+            let input_chain_id = block_output.chain_id;
+            self.check_or_update_chain_id(input_chain_id as i64);
+        }
+
         let (txns, txn_details, events, wscs, wsc_details) =
             TransactionModel::from_transactions(&block_output.transactions);
         let conn = Self::get_conn(self.connection_pool());

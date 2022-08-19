@@ -51,7 +51,7 @@ table! {
         transaction_block_height -> Int8,
         name -> Varchar,
         address -> Varchar,
-        bytecode -> Nullable<Text>,
+        bytecode -> Nullable<Bytea>,
         friends -> Nullable<Jsonb>,
         exposed_functions -> Nullable<Jsonb>,
         structs -> Nullable<Jsonb>,
@@ -76,7 +76,7 @@ table! {
 }
 
 table! {
-    signatures (transaction_version, multi_agent_index, multi_sig_index) {
+    signatures (transaction_version, multi_agent_index, multi_sig_index, is_sender_primary) {
         transaction_version -> Int8,
         multi_agent_index -> Int8,
         multi_sig_index -> Int8,
@@ -94,7 +94,7 @@ table! {
 
 table! {
     table_items (transaction_version, write_set_change_index) {
-        key -> Varchar,
+        key -> Text,
         transaction_version -> Int8,
         write_set_change_index -> Int8,
         transaction_block_height -> Int8,
@@ -122,7 +122,7 @@ table! {
         hash -> Varchar,
         #[sql_name = "type"]
         type_ -> Varchar,
-        payload -> Jsonb,
+        payload -> Nullable<Jsonb>,
         state_root_hash -> Varchar,
         event_root_hash -> Varchar,
         gas_used -> Numeric,
@@ -149,14 +149,14 @@ table! {
 }
 
 table! {
-    write_set_changes (transaction_version, hash) {
+    write_set_changes (transaction_version, index) {
         transaction_version -> Int8,
+        index -> Int8,
         hash -> Varchar,
         transaction_block_height -> Int8,
         #[sql_name = "type"]
         type_ -> Text,
         address -> Varchar,
-        index -> Int8,
         inserted_at -> Timestamp,
     }
 }

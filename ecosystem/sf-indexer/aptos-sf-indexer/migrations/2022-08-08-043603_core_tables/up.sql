@@ -34,7 +34,7 @@ CREATE TABLE transactions (
   block_height BIGINT NOT NULL,
   hash VARCHAR(255) UNIQUE NOT NULL,
   type VARCHAR(255) NOT NULL,
-  payload jsonb NOT NULL,
+  payload jsonb,
   state_root_hash VARCHAR(255) NOT NULL,
   event_root_hash VARCHAR(255) NOT NULL,
   gas_used NUMERIC NOT NULL,
@@ -80,7 +80,7 @@ CREATE TABLE transactions (
  */
 CREATE TABLE block_metadata_transactions (
   version BIGINT UNIQUE PRIMARY KEY NOT NULL,
-  block_height BIGINT NOT NULL,
+  block_height BIGINT UNIQUE NOT NULL,
   id VARCHAR(255) NOT NULL,
   round BIGINT NOT NULL,
   epoch BIGINT NOT NULL,
@@ -163,7 +163,7 @@ CREATE TABLE user_transactions (
   CONSTRAINT fk_versions FOREIGN KEY (version) REFERENCES transactions (version),
   UNIQUE (sender, sequence_number)
 );
-CREATE INDEX ut_sender_index ON user_transactions (sender);
+CREATE INDEX ut_sender_seq_index ON user_transactions (sender, sequence_number);
 CREATE TABLE signatures (
   transaction_version BIGINT NOT NULL,
   multi_agent_index BIGINT NOT NULL,
@@ -180,7 +180,8 @@ CREATE TABLE signatures (
   PRIMARY KEY (
     transaction_version,
     multi_agent_index,
-    multi_sig_index
+    multi_sig_index,
+    is_sender_primary
   ),
   CONSTRAINT fk_transaction_versions FOREIGN KEY (transaction_version) REFERENCES transactions (version)
 );
@@ -198,7 +199,7 @@ CREATE TABLE events (
   key VARCHAR(100) NOT NULL,
   sequence_number BIGINT NOT NULL,
   creation_number BIGINT NOT NULL,
-  account_address VARCHAR(100) NOT NULL,
+  account_address VARCHAR(64) NOT NULL,
   transaction_version BIGINT NOT NULL,
   transaction_block_height BIGINT NOT NULL,
   type TEXT NOT NULL,
@@ -208,27 +209,28 @@ CREATE TABLE events (
   PRIMARY KEY (key, sequence_number),
   CONSTRAINT fk_transaction_versions FOREIGN KEY (transaction_version) REFERENCES transactions (version)
 );
-CREATE INDEX event_key_seq_type_index ON events (key, sequence_number, type);
+CREATE INDEX event_addr_type_index ON events (account_address, type);
 CREATE TABLE write_set_changes (
   transaction_version BIGINT NOT NULL,
+  index BIGINT NOT NULL,
   hash VARCHAR(255) NOT NULL,
   transaction_block_height BIGINT NOT NULL,
   type TEXT NOT NULL,
   address VARCHAR(255) NOT NULL,
-  index BIGINT NOT NULL,
   inserted_at TIMESTAMP NOT NULL DEFAULT NOW(),
   -- Constraints
-  PRIMARY KEY (transaction_version, hash),
+  PRIMARY KEY (transaction_version, index),
   CONSTRAINT fk_transaction_versions FOREIGN KEY (transaction_version) REFERENCES transactions (version)
 );
-CREATE INDEX write_set_changes_tx_hash_addr_type_index ON write_set_changes (transaction_version, address, type);
+CREATE INDEX write_set_changes_addr_type_ver_index ON write_set_changes (address, type, transaction_version DESC);
+CREATE INDEX write_set_changes_type_ver_index ON write_set_changes (type, transaction_version DESC);
 CREATE TABLE move_modules (
   transaction_version BIGINT NOT NULL,
   write_set_change_index BIGINT NOT NULL,
   transaction_block_height BIGINT NOT NULL,
   name VARCHAR(255) NOT NULL,
   address VARCHAR(255) NOT NULL,
-  bytecode text,
+  bytecode bytea,
   friends jsonb,
   exposed_functions jsonb,
   structs jsonb,
@@ -238,6 +240,7 @@ CREATE TABLE move_modules (
   PRIMARY KEY (transaction_version, write_set_change_index),
   CONSTRAINT fk_transaction_versions FOREIGN KEY (transaction_version) REFERENCES transactions (version)
 );
+CREATE INDEX move_modules_addr_name_ver_index ON move_modules (address, name, transaction_version);
 CREATE TABLE move_resources (
   transaction_version BIGINT NOT NULL,
   write_set_change_index BIGINT NOT NULL,
@@ -253,8 +256,9 @@ CREATE TABLE move_resources (
   PRIMARY KEY (transaction_version, write_set_change_index),
   CONSTRAINT fk_transaction_versions FOREIGN KEY (transaction_version) REFERENCES transactions (version)
 );
+CREATE INDEX move_resources_addr_mod_name_ver_index ON move_resources (address, module, name, transaction_version);
 CREATE TABLE table_items (
-  key VARCHAR(255) NOT NULL,
+  key text NOT NULL,
   transaction_version BIGINT NOT NULL,
   write_set_change_index BIGINT NOT NULL,
   transaction_block_height BIGINT NOT NULL,
@@ -267,6 +271,7 @@ CREATE TABLE table_items (
   PRIMARY KEY (transaction_version, write_set_change_index),
   CONSTRAINT fk_transaction_versions FOREIGN KEY (transaction_version) REFERENCES transactions (version)
 );
+CREATE INDEX table_items_hand_ver_key_index ON table_items (table_handle, transaction_version, key);
 CREATE TABLE table_metadatas (
   handle VARCHAR(255) UNIQUE PRIMARY KEY NOT NULL,
   key_type text NOT NULL,
@@ -282,4 +287,5 @@ CREATE TABLE indexer_states (
   -- Constraints
   PRIMARY KEY (substream_module, block_height)
 );
+CREATE INDEX indexer_states_succ_ver_index ON indexer_states (success, block_height ASC);
 CREATE TABLE ledger_infos (chain_id BIGINT UNIQUE PRIMARY KEY NOT NULL);

@@ -3,23 +3,24 @@
 
 use crate::{
     counters::{
-        GOT_CONNECTION, PROCESSOR_ERRORS, PROCESSOR_INVOCATIONS, PROCESSOR_SUCCESSES,
-        UNABLE_TO_GET_CONNECTION,
+        GOT_CONNECTION, LATEST_PROCESSED_BLOCK, SUBSTREAM_ERRORS, SUBSTREAM_INVOCATIONS,
+        SUBSTREAM_SUCCESSES, UNABLE_TO_GET_CONNECTION,
     },
     database::{execute_with_better_error, PgDbPool, PgPoolConnection},
     indexer::{errors::BlockProcessingError, processing_result::ProcessingResult},
-    models::indexer_states::IndexerState,
+    models::{indexer_states::IndexerState, ledger_infos::LedgerInfo},
     proto::BlockScopedData,
     schema,
 };
 use aptos_logger::info;
 use async_trait::async_trait;
 use diesel::{
+    prelude::*,
     sql_query,
     sql_types::{BigInt, Text},
     RunQueryDsl,
 };
-use schema::indexer_states;
+use schema::{indexer_states, ledger_infos};
 use std::fmt::Debug;
 
 diesel_migrations::embed_migrations!();
@@ -35,7 +36,7 @@ pub trait SubstreamProcessor: Send + Sync + Debug {
     /// In case a block cannot be processed, returns an error: the processor will mark it as failed in the database,
     /// and it will be retried next time the indexer is started.
     async fn process_substream(
-        &self,
+        &mut self,
         stream_data: BlockScopedData,
         block_height: u64,
     ) -> Result<ProcessingResult, BlockProcessingError>;
@@ -44,6 +45,11 @@ pub trait SubstreamProcessor: Send + Sync + Debug {
     /// This is used by the `get_conn()` helper below
     fn connection_pool(&self) -> &PgDbPool;
 
+    /// If not verified, verify that chain id is correct, else panic. These functions
+    /// will be called inside of process_substream since chain id can only be accessed inside the protobuf
+    fn is_chain_id_verified(&self) -> bool;
+
+    fn set_is_chain_id_verified(&mut self);
     //* Below are helper methods that don't need to be implemented *//
 
     /// Gets the connection.
@@ -71,14 +77,14 @@ pub trait SubstreamProcessor: Send + Sync + Debug {
     /// This is a helper method, tying together the other helper methods to allow tracking status in the DB
     async fn process_substream_with_status(
         &mut self,
-        current_substream_name: String,
+        input_substream_name: String,
         stream_data: BlockScopedData,
         block_height: u64,
     ) -> Result<ProcessingResult, BlockProcessingError> {
-        if current_substream_name != self.substream_module_name() {
-            panic!("Wrong processor detected: this processor can only process module {},  module {} detected.", self.substream_module_name(), current_substream_name);
+        if input_substream_name != self.substream_module_name() {
+            panic!("Wrong processor detected: this processor can only process module {},  module {} detected.", self.substream_module_name(), input_substream_name);
         }
-        PROCESSOR_INVOCATIONS
+        SUBSTREAM_INVOCATIONS
             .with_label_values(&[self.substream_module_name()])
             .inc();
 
@@ -115,9 +121,12 @@ pub trait SubstreamProcessor: Send + Sync + Debug {
             self.substream_module_name(),
             processing_result.block_height
         );
-        PROCESSOR_SUCCESSES
+        SUBSTREAM_SUCCESSES
             .with_label_values(&[self.substream_module_name()])
             .inc();
+        LATEST_PROCESSED_BLOCK
+            .with_label_values(&[self.substream_module_name()])
+            .set(processing_result.block_height as i64);
         let psm = IndexerState::from_processing_result_ok(processing_result);
         self.apply_processor_status(&psm);
     }
@@ -129,7 +138,7 @@ pub trait SubstreamProcessor: Send + Sync + Debug {
             self.substream_module_name(),
             bpe
         );
-        PROCESSOR_ERRORS
+        SUBSTREAM_ERRORS
             .with_label_values(&[self.substream_module_name()])
             .inc();
         let psm = IndexerState::from_block_processing_err(bpe);
@@ -151,6 +160,44 @@ pub trait SubstreamProcessor: Send + Sync + Debug {
                 .set(psm),
         )
         .expect("Error updating Processor Status!");
+    }
+
+    /// If chain id doesn't exist, save it. Otherwise make sure that we're indexing the same chain
+    /// If check is successful, we will call set_is_chain_id_verified to attempt to persist the result
+    /// of the check. Make sure to implement this function and call is_chain_id_verified to read the flag.
+    fn check_or_update_chain_id(&mut self, input_chain_id: i64) {
+        info!("Checking if chain id is correct");
+        let conn = self
+            .connection_pool()
+            .get()
+            .expect("DB connection is not available to query chain id");
+
+        let chain_in_db = ledger_infos::dsl::ledger_infos
+            .select(ledger_infos::dsl::chain_id)
+            .load::<i64>(&conn)
+            .expect("Error loading chain id from db");
+        let chain_in_db = chain_in_db.first();
+        match chain_in_db {
+            Some(chain_id) => {
+                if *chain_id != input_chain_id {
+                    panic!("Wrong chain detected! Trying to index chain {} now but existing data is for chain {}", input_chain_id, chain_id);
+                }
+                info!("Chain id matches! Continuing to index chain {}", chain_id);
+            }
+            None => {
+                info!(
+                    "Adding chain id {} to db, continue to index",
+                    input_chain_id
+                );
+                execute_with_better_error(
+                    &conn,
+                    diesel::insert_into(ledger_infos::table).values(LedgerInfo {
+                        chain_id: input_chain_id,
+                    }),
+                ).unwrap();
+            }
+        }
+        self.set_is_chain_id_verified();
     }
 }
 
@@ -223,12 +270,9 @@ pub fn get_start_block(pool: &PgDbPool, substream_module_name: &String) -> Optio
         #[sql_type = "BigInt"]
         pub block_height: i64,
     }
-    let res: Vec<Option<Gap>> = sql_query(sql)
+    let mut res: Vec<Option<Gap>> = sql_query(sql)
         .bind::<Text, _>(substream_module_name)
         .get_results(&conn)
         .unwrap();
-    match res.first() {
-        Some(Some(gap)) => Some(gap.block_height),
-        _ => None,
-    }
+    res.pop().unwrap().map(|g| g.block_height)
 }

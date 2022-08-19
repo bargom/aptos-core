@@ -10,7 +10,6 @@ use aptos_protos::block_output::v1::{
     write_set_change_output::Change, MoveModuleOutput, MoveResourceOutput, TableItemOutput,
     WriteSetChangeOutput,
 };
-use aptos_rest_client::MoveModuleBytecode;
 use serde::Serialize;
 
 #[derive(Associations, Debug, Identifiable, Insertable, Queryable, Serialize)]
@@ -129,7 +128,7 @@ pub struct MoveModule {
     pub transaction_block_height: i64,
     pub name: String,
     pub address: String,
-    pub bytecode: Option<String>,
+    pub bytecode: Option<Vec<u8>>,
     pub friends: Option<serde_json::Value>,
     pub structs: Option<serde_json::Value>,
     pub is_deleted: bool,
@@ -153,11 +152,7 @@ impl MoveModule {
             bytecode: if move_module.is_deleted {
                 None
             } else {
-                Some(
-                    MoveModuleBytecode::new(move_module.bytecode.clone())
-                        .bytecode
-                        .to_string(),
-                )
+                Some(move_module.bytecode.clone())
             },
             friends: if move_module.is_deleted {
                 None
