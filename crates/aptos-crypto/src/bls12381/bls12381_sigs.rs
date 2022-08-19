@@ -116,7 +116,6 @@ impl Signature {
     }
 
     /// Return a dummy signature for testing.
-    #[cfg(any(test, feature = "fuzzing"))]
     pub fn dummy_signature() -> Self {
         use crate::{Genesis, SigningKey};
 

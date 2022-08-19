@@ -10,7 +10,6 @@ use aptos_types::validator_verifier::VerifyError;
 use aptos_types::{
     block_info::Round, validator_signer::ValidatorSigner, validator_verifier::ValidatorVerifier,
 };
-use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
