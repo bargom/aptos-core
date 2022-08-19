@@ -91,44 +91,48 @@ async fn main() -> Result<(), Error> {
     );
 
     let mut block_height = start_block as u64;
+    let mut processor;
+    // TODO: Create an enum w/ all the module options
+    if substream_module_name == "block_to_block_output" {
+        processor = BlockOutputSubstreamProcessor::new(conn_pool.clone());
+    } else {
+        panic!("Module unsupported {}", substream_module_name);
+    }
     loop {
-        match stream.next().await {
+        let data = match stream.next().await {
             None => {
                 info!("Stream consumed for module {}", substream_module_name);
                 break;
             }
             Some(event) => {
+                let block_data;
                 if let Ok(BlockResponse::New(data)) = event {
                     info!(
                         "Consuming module output (module {}, block {}, cursor {})",
                         substream_module_name, block_height, data.cursor
                     );
-
-                    if substream_module_name == "block_to_block_output" {
-                        let mut processor = BlockOutputSubstreamProcessor::new(conn_pool.clone());
-                        match processor
-                            .process_substream_with_status(
-                                substream_module_name.clone(),
-                                data,
-                                block_height,
-                            )
-                            .await
-                        {
-                            Ok(_) => {
-                                info!("Finished processing block {}", block_height);
-                                block_height += 1
-                            }
-                            Err(error) => {
-                                panic!(
-                                    "Error processing block {}, error: {:?}",
-                                    block_height, &error
-                                );
-                            }
-                        };
-                    }
+                    block_data = data;
+                } else {
+                    panic!("Stream response failed");
                 }
+                block_data
             }
-        }
+        };
+        match processor
+            .process_substream_with_status(substream_module_name.clone(), data, block_height)
+            .await
+        {
+            Ok(_) => {
+                info!("Finished processing block {}", block_height);
+                block_height += 1
+            }
+            Err(error) => {
+                panic!(
+                    "Error processing block {}, error: {:?}",
+                    block_height, &error
+                );
+            }
+        };
     }
 
     Ok(())

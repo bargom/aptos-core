@@ -353,12 +353,10 @@ impl SubstreamProcessor for BlockOutputSubstreamProcessor {
     }
 
     fn is_chain_id_verified(&self) -> bool {
-        println!("AAA IS VERIFIED {}", self.is_chain_id_verified);
         self.is_chain_id_verified
     }
 
     fn set_is_chain_id_verified(&mut self) {
-        println!("AAA SETTING CHAIN ID TO TRUE");
         self.is_chain_id_verified = true;
     }
 
